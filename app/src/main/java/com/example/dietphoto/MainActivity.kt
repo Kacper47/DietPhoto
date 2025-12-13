@@ -3,6 +3,7 @@ package com.example.dietphoto
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -44,17 +45,20 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.asRequestBody
 
 class MainActivity : ComponentActivity() {
-
     private lateinit var cameraExecutor: ExecutorService
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
         cameraExecutor = Executors.newSingleThreadExecutor()
-
         setContent {
             DietPhotoTheme {
                 MainScreen(cameraExecutor)
@@ -73,10 +77,7 @@ fun MainScreen(cameraExecutor: ExecutorService) {
     val context = LocalContext.current
     var hasPermission by remember {
         mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.CAMERA
-            ) == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
         )
     }
 
@@ -104,22 +105,13 @@ fun MainScreen(cameraExecutor: ExecutorService) {
 @Composable
 fun CameraContent(cameraExecutor: ExecutorService) {
     val context = LocalContext.current
-
-    // Obiekt ImageCapture służy do robienia zdjęć
     val imageCapture = remember { ImageCapture.Builder().build() }
-
-    // Stan tymczasowego zdjęcia (tylko do dialogu)
     var capturedPhotoUri by remember { mutableStateOf<Uri?>(null) }
+    var isUploading by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        CameraPreviewView(modifier = Modifier.fillMaxSize(), imageCapture = imageCapture)
 
-        // Podgląd kamery
-        CameraPreviewView(
-            modifier = Modifier.fillMaxSize(),
-            imageCapture = imageCapture
-        )
-
-        // Przycisk robienia zdjęcia
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -136,40 +128,37 @@ fun CameraContent(cameraExecutor: ExecutorService) {
                 modifier = Modifier.size(70.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color.White)
             ) {
-                Icon(
-                    Icons.Default.Camera,
-                    contentDescription = "Zrób zdjęcie",
-                    tint = Color.Black
-                )
+                Icon(Icons.Default.Camera, contentDescription = "Zrób zdjęcie", tint = Color.Black)
             }
         }
 
-        // Okno decyzyjne po zrobieniu zdjęcia (Dialog)
         capturedPhotoUri?.let { uri ->
             PhotoActionDialog(
                 photoUri = uri,
+                isUploading = isUploading,
                 onDismiss = {
-                    // Usuń plik i zamknij dialog
-                    deletePhoto(context, uri)
-                    capturedPhotoUri = null
+                    if (!isUploading) {
+                        deletePhoto(context, uri)
+                        capturedPhotoUri = null
+                    }
                 },
                 onUpload = {
-                    // Wyślij na serwer, a potem usuń lokalny plik
-                    uploadPhotoToServer(context, uri)
-                    deletePhoto(context, uri)
-                    capturedPhotoUri = null
+                    isUploading = true
+                    uploadPhotoToServer(context, uri) { success ->
+                        isUploading = false
+                        if (success) {
+                            deletePhoto(context, uri)
+                            capturedPhotoUri = null
+                        }
+                    }
                 }
             )
         }
     }
 }
 
-// Komponent podglądu kamery
 @Composable
-fun CameraPreviewView(
-    modifier: Modifier,
-    imageCapture: ImageCapture
-) {
+fun CameraPreviewView(modifier: Modifier, imageCapture: ImageCapture) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val previewView = remember { PreviewView(context) }
@@ -185,15 +174,9 @@ fun CameraPreviewView(
                 it.setSurfaceProvider(view.surfaceProvider)
             }
             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-
             try {
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
-                    lifecycleOwner,
-                    cameraSelector,
-                    preview,
-                    imageCapture
-                )
+                cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, imageCapture)
             } catch (e: Exception) {
                 Log.e("CameraX", "Błąd bindowania kamery", e)
             }
@@ -201,64 +184,51 @@ fun CameraPreviewView(
     }
 }
 
-// Okienko z podglądem i dwoma przyciskami
 @Composable
 fun PhotoActionDialog(
     photoUri: Uri,
+    isUploading: Boolean,
     onDismiss: () -> Unit,
     onUpload: () -> Unit
 ) {
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = { if (!isUploading) onDismiss() }) {
         Card(
             shape = RoundedCornerShape(16.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .wrapContentHeight()
+            modifier = Modifier.fillMaxWidth().wrapContentHeight()
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(16.dp)
             ) {
-                Text("Co zrobić ze zdjęciem?", style = MaterialTheme.typography.titleMedium)
+                Text(if (isUploading) "Wysyłanie..." else "Co zrobić ze zdjęciem?", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Image(
-                    painter = rememberAsyncImagePainter(photoUri),
-                    contentDescription = "Zrobione zdjęcie",
-                    modifier = Modifier
-                        .height(300.dp)
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp)),
-                    contentScale = ContentScale.Crop
-                )
+                if (isUploading) {
+                    CircularProgressIndicator()
+                } else {
+                    Image(
+                        painter = rememberAsyncImagePainter(photoUri),
+                        contentDescription = "Zrobione zdjęcie",
+                        modifier = Modifier.height(300.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    // guzik "Usuń"
-                    Button(
-                        onClick = onDismiss,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
-                        modifier = Modifier
-                            .widthIn(min = 120.dp)
-                            .padding(bottom = 8.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        Text("Usuń")
-                    }
+                if (!isUploading) {
+                    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Button(
+                            onClick = onDismiss,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                            modifier = Modifier.widthIn(min = 120.dp).padding(bottom = 8.dp)
+                        ) { Text("Usuń") }
 
-                    // guzik "Wyślij na serwer"
-                    Button(
-                        onClick = onUpload,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary
-                        )
-                    ) {
-                        Text("Wyślij na serwer")
+                        Button(
+                            onClick = onUpload,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) { Text("Wyślij na serwer") }
                     }
                 }
             }
@@ -266,22 +236,11 @@ fun PhotoActionDialog(
     }
 }
 
-
-
-// Funkcja robiąca zdjęcie
-fun takePhoto(
-    context: Context,
-    imageCapture: ImageCapture,
-    executor: ExecutorService,
-    onImageCaptured: (Uri) -> Unit
-) {
-    // Tutaj jest plik zdjęcia
+fun takePhoto(context: Context, imageCapture: ImageCapture, executor: ExecutorService, onImageCaptured: (Uri) -> Unit) {
     val photoFile = File(
         context.getExternalFilesDir(null),
-        SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US)
-            .format(System.currentTimeMillis()) + ".jpg"
+        SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US).format(System.currentTimeMillis()) + ".jpg"
     )
-
     val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
 
     imageCapture.takePicture(
@@ -291,34 +250,72 @@ fun takePhoto(
             override fun onError(exc: ImageCaptureException) {
                 Log.e("CameraX", "Błąd robienia zdjęcia: ${exc.message}", exc)
             }
-
             override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                // Uri wskazujące na plik zdjęcia
-                val savedUri = Uri.fromFile(photoFile)
-
-                // I to Uri niesiemy dalej do UI / uploadu:
-                onImageCaptured(savedUri)
+                onImageCaptured(Uri.fromFile(photoFile))
             }
         }
     )
 }
 
-// Symulacja wysyłania na serwer
-fun uploadPhotoToServer(context: Context, uri: Uri) {
-    Toast.makeText(context, "Wysyłanie zdjęcia na serwer...", Toast.LENGTH_SHORT).show()
-    Log.d("SERVER_UPLOAD", "Rozpoczynam wysyłanie pliku: $uri")
-    // tutaj można dodać dalsze operacje
+// === GŁÓWNA LOGIKA SIECIOWA ===
+fun uploadPhotoToServer(context: Context, uri: Uri, onResult: (Boolean) -> Unit) {
+    Toast.makeText(context, "Rozpoczynam proces...", Toast.LENGTH_SHORT).show()
+
+    CoroutineScope(Dispatchers.IO).launch {
+        try {
+            val path = uri.path ?: return@launch
+            val file = File(path)
+
+            if (!file.exists()) {
+                withContext(Dispatchers.Main) { Toast.makeText(context, "Błąd pliku", Toast.LENGTH_SHORT).show() }
+                return@launch
+            }
+
+            // 0. Czytamy wymiary zdjęcia (Wymagane w kroku 3)
+            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(file.absolutePath, options)
+            val imgWidth = options.outWidth
+            val imgHeight = options.outHeight
+
+            // KROK 1: Presign - pobranie URL i ID
+            Log.d("UPLOAD", "Krok 1: Presign")
+            val presignResp = RetrofitClient.api.getPresignUrl(PresignRequest("jpg"))
+            if (!presignResp.isSuccessful || presignResp.body() == null) throw Exception("Błąd Presign: ${presignResp.code()}")
+
+            val uploadUrl = presignResp.body()!!.upload_url
+            val photoId = presignResp.body()!!.photo_id
+
+            // KROK 2: Upload Binary - wysłanie pliku
+            Log.d("UPLOAD", "Krok 2: Upload na $uploadUrl")
+            val reqFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
+            val uploadResp = RetrofitClient.api.uploadImageBinary(uploadUrl, reqFile)
+            if (!uploadResp.isSuccessful) throw Exception("Błąd Binary Upload: ${uploadResp.code()}")
+
+            // KROK 3: Confirm - potwierdzenie na serwerze
+            Log.d("UPLOAD", "Krok 3: Confirm")
+            val confirmResp = RetrofitClient.api.confirmUpload(ConfirmRequest(photoId, "jpg", imgWidth, imgHeight))
+            if (!confirmResp.isSuccessful) throw Exception("Błąd Confirm: ${confirmResp.code()}")
+
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Sukces! Zdjęcie wysłane.", Toast.LENGTH_LONG).show()
+                onResult(true)
+            }
+
+        } catch (e: Exception) {
+            Log.e("UPLOAD", "Błąd procesu", e)
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Błąd: ${e.message}", Toast.LENGTH_LONG).show()
+                onResult(false)
+            }
+        }
+    }
 }
 
-// Usuwanie zdjęcia
 fun deletePhoto(context: Context, uri: Uri) {
     try {
-        // dla Uri.fromFile – usuwamy bezpośrednio plik
         uri.path?.let { path ->
             val file = File(path)
-            if (file.exists()) {
-                file.delete()
-            }
+            if (file.exists()) file.delete()
         }
     } catch (e: Exception) {
         e.printStackTrace()
