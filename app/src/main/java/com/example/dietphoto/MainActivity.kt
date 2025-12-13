@@ -154,11 +154,20 @@ fun CameraContent(cameraExecutor: ExecutorService) {
                     capturedPhotoUri = null
                 },
                 onUpload = {
-                    // Wyślij na serwer, a potem usuń lokalny plik
-                    uploadPhotoToServer(context, uri)
-                    deletePhoto(context, uri)
-                    capturedPhotoUri = null
+                    uploadPhotoToServer(
+                    context = context,
+                    uri = uri,
+                    onSuccess = {
+                        deletePhoto(context, uri)
+                        capturedPhotoUri = null
+                        },
+                    onError = {
+                        // tu możesz zdecydować: zostawić plik i/lub zostawić dialog
+                        capturedPhotoUri = null
+                        }
+                    )
                 }
+
             )
         }
     }
