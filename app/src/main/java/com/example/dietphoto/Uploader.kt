@@ -10,23 +10,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
-import java.util.concurrent.TimeUnit
 
-private const val BASE_URL = "http://192.168.0.41/api/"
 private val JSON = "application/json; charset=utf-8".toMediaType()
 private val JPEG = "image/jpeg".toMediaType()
-
-private val httpClient: OkHttpClient = OkHttpClient.Builder()
-    .connectTimeout(20, TimeUnit.SECONDS)
-    .readTimeout(60, TimeUnit.SECONDS)
-    .writeTimeout(60, TimeUnit.SECONDS)
-    .build()
 
 private val uploadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 

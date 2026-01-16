@@ -22,10 +22,12 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Camera
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,6 +35,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -57,7 +61,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DietPhotoTheme {
-                MainScreen(cameraExecutor)
+                AppRoot(cameraExecutor)
             }
         }
     }
@@ -65,6 +69,98 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         cameraExecutor.shutdown()
+    }
+}
+
+@Composable
+fun AppRoot(cameraExecutor: ExecutorService) {
+    var isLoggedIn by rememberSaveable { mutableStateOf(AuthStore.accessToken != null) }
+
+    if (isLoggedIn) {
+        MainScreen(cameraExecutor)
+    } else {
+        LoginScreen(
+            onLoginSuccess = { token ->
+                AuthStore.accessToken = token
+                isLoggedIn = true
+            }
+        )
+    }
+}
+
+@Composable
+fun LoginScreen(onLoginSuccess: (String) -> Unit) {
+    var username by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("Login", style = MaterialTheme.typography.headlineSmall)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        OutlinedTextField(
+            value = username,
+            onValueChange = { username = it },
+            label = { Text("Username") },
+            singleLine = true,
+            enabled = !isLoading,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Password") },
+            singleLine = true,
+            enabled = !isLoading,
+            modifier = Modifier.fillMaxWidth(),
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+        )
+
+        if (error != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(error.orEmpty(), color = MaterialTheme.colorScheme.error)
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = {
+                val trimmedUser = username.trim()
+                if (trimmedUser.isBlank() || password.isBlank()) {
+                    error = "Enter username and password."
+                    return@Button
+                }
+
+                isLoading = true
+                error = null
+                scope.launch {
+                    try {
+                        val token = loginToServer(trimmedUser, password)
+                        onLoginSuccess(token)
+                    } catch (e: Exception) {
+                        error = e.message ?: "Login failed."
+                    } finally {
+                        isLoading = false
+                    }
+                }
+            },
+            enabled = !isLoading,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(if (isLoading) "Signing in..." else "Sign in")
+        }
     }
 }
 
