@@ -38,6 +38,7 @@ fun uploadPhotoToServer(
             // KROK 1: PRESIGN
             val presignBody = JSONObject()
                 .put("extension", extension)
+                .put("user_id", 1)
                 .toString()
                 .toRequestBody(JSON)
 
@@ -76,6 +77,7 @@ fun uploadPhotoToServer(
                 .put("extension", extension)
                 .put("width", w)
                 .put("height", h)
+                .put("user_id", 1)
                 .toString()
                 .toRequestBody(JSON)
 
