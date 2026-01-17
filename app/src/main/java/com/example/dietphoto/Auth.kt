@@ -8,10 +8,34 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import android.content.Context
+import android.content.SharedPreferences
 
 object AuthStore {
     @Volatile
     var accessToken: String? = null
+
+    private const val PREFS_NAME = "auth_prefs"
+    private const val KEY_TOKEN = "access_token"
+
+    fun loadSavedToken(context: Context): String? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val token = prefs.getString(KEY_TOKEN, null)
+        accessToken = token
+        return token
+    }
+
+    fun persistToken(context: Context, token: String) {
+        accessToken = token
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_TOKEN, token).apply()
+    }
+
+    fun clearToken(context: Context) {
+        accessToken = null
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().remove(KEY_TOKEN).apply()
+    }
 }
 
 private val FORM_URL_ENCODED = "application/x-www-form-urlencoded".toMediaType()

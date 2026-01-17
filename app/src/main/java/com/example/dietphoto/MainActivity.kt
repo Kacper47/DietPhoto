@@ -80,7 +80,17 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AppRoot(cameraExecutor: ExecutorService) {
-    var isLoggedIn by rememberSaveable { mutableStateOf(AuthStore.accessToken != null) }
+    val context = LocalContext.current
+    var isLoggedIn by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        if (!isLoggedIn) {
+            val token = AuthStore.loadSavedToken(context)
+            if (!token.isNullOrBlank()) {
+                isLoggedIn = true
+            }
+        }
+    }
 
     if (isLoggedIn) {
         MainScreen(cameraExecutor)
@@ -160,6 +170,7 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
                 scope.launch {
                     try {
                         val token = loginToServer(trimmedUser, password)
+                        AuthStore.persistToken(context, token)
                         onLoginSuccess(token)
                     } catch (e: Exception) {
                         // Sprawdzamy co zawiera błąd
