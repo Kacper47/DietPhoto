@@ -1,4 +1,4 @@
-package com.example.dietphoto
+﻿package com.example.dietphoto
 
 import android.Manifest
 import android.content.Context
@@ -19,14 +19,19 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Camera
+import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,17 +48,19 @@ import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import coil.compose.rememberAsyncImagePainter
 import com.example.dietphoto.ui.theme.DietPhotoTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import androidx.compose.foundation.border
-import androidx.compose.material.icons.filled.ExitToApp
-import androidx.compose.material.icons.filled.MoreVert
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import okhttp3.Request
+import kotlin.system.measureTimeMillis
 
 class MainActivity : ComponentActivity() {
 
@@ -113,89 +120,102 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(24.dp)
     ) {
-        Text("Zaloguj się", style = MaterialTheme.typography.headlineSmall)
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedTextField(
-            value = username,
-            onValueChange = { username = it },
-            label = { Text("Nazwa użytkownika") },
-            singleLine = true,
-            enabled = !isLoading,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Hasło") },
-            singleLine = true,
-            enabled = !isLoading,
-            modifier = Modifier.fillMaxWidth(),
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
-        )
-
-        if (error != null) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(error.orEmpty(), color = MaterialTheme.colorScheme.error)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopEnd),
+            horizontalArrangement = Arrangement.End
+        ) {
+            ConnectionDot()
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(
-            onClick = {
-                if (!isNetworkAvailable(context)) {
-                    error = "Brak połączenia z internetem. Włącz Wi-Fi lub dane."
-                    return@Button
-                }
-
-                val trimmedUser = username.trim()
-                if (trimmedUser.isBlank() || password.isBlank()) {
-                    error = "Podaj nazwę użytkownika i hasło"
-                    return@Button
-                }
-
-                isLoading = true
-                error = null
-                scope.launch {
-                    try {
-                        val token = loginToServer(trimmedUser, password)
-                        AuthStore.persistToken(context, token)
-                        onLoginSuccess(token)
-                    } catch (e: Exception) {
-                        // Sprawdzamy co zawiera błąd
-                        error = when {
-                            e.message?.contains("Incorrect username", ignoreCase = true) == true ->
-                                "Błędna nazwa użytkownika lub hasło"
-
-                            e.message?.contains("Failed to connect", ignoreCase = true) == true ->
-                                "Nie można połączyć się z serwerem. Sprawdź IP i internet."
-
-                            else -> "Wystąpił nieoczekiwany błąd: ${e.localizedMessage}"
-                        }
-                    } finally {
-                        isLoading = false
-                    }
-                }
-            },
-            enabled = !isLoading,
-            modifier = Modifier.fillMaxWidth()
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.Center),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(if (isLoading) "Logowanie..." else "Zaloguj się")
+            Text("Zaloguj się", style = MaterialTheme.typography.headlineSmall)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = username,
+                onValueChange = { username = it },
+                label = { Text("Nazwa użytkownika") },
+                singleLine = true,
+                enabled = !isLoading,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text("Hasło") },
+                singleLine = true,
+                enabled = !isLoading,
+                modifier = Modifier.fillMaxWidth(),
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+            )
+
+            if (error != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(error.orEmpty(), color = MaterialTheme.colorScheme.error)
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = {
+                    if (!isNetworkAvailable(context)) {
+                        error = "Brak połączenia z internetem. Włącz Wi-Fi lub dane."
+                        return@Button
+                    }
+
+                    val trimmedUser = username.trim()
+                    if (trimmedUser.isBlank() || password.isBlank()) {
+                        error = "Podaj nazwę użytkownika i hasło"
+                        return@Button
+                    }
+
+                    isLoading = true
+                    error = null
+                    scope.launch {
+                        try {
+                            val token = loginToServer(trimmedUser, password)
+                            AuthStore.persistToken(context, token)
+                            onLoginSuccess(token)
+                        } catch (e: Exception) {
+                            error = when {
+                                e.message?.contains("Incorrect username", ignoreCase = true) == true ->
+                                    "Błędna nazwa użytkownika lub hasło"
+
+                                e.message?.contains("Failed to connect", ignoreCase = true) == true ->
+                                    "Nie można połączyć się z serwerem. Sprawdź adres i internet."
+
+                                else -> "Wystąpił nieoczekiwany błąd: ${e.localizedMessage}"
+                            }
+                        } finally {
+                            isLoading = false
+                        }
+                    }
+                },
+                enabled = !isLoading,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (isLoading) "Logowanie..." else "Zaloguj się")
+            }
         }
     }
 }
-
 @Composable
 fun MainScreen(cameraExecutor: ExecutorService, onLogout: () -> Unit) {
     val context = LocalContext.current
@@ -247,15 +267,22 @@ fun CameraContent(cameraExecutor: ExecutorService, onLogout: () -> Unit) {
             imageCapture = imageCapture
         )
 
-                IconButton(
-            onClick = onLogout,
-            modifier = Modifier.align(Alignment.TopEnd).padding(top = 40.dp, end = 16.dp)
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 32.dp, end = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Icon(
-                imageVector = Icons.Filled.ExitToApp,
-                contentDescription = "Wyloguj",
-                tint = Color.White
-            )
+            ConnectionDot()
+
+            IconButton(onClick = onLogout) {
+                Icon(
+                    imageVector = Icons.Filled.ExitToApp,
+                    contentDescription = "Wyloguj",
+                    tint = Color.White
+                )
+            }
         }
         // Przycisk robienia zdjęcia
         Column(
@@ -466,7 +493,7 @@ fun uploadPhotoToServer(context: Context, uri: Uri) {
 // Usuwanie zdjęcia
 fun deletePhoto(context: Context, uri: Uri) {
     try {
-        // dla Uri.fromFile – usuwamy bezpośrednio plik
+        // dla Uri.fromFile - usuwamy bezpośrednio plik
         uri.path?.let { path ->
             val file = File(path)
             if (file.exists()) {
@@ -484,4 +511,67 @@ fun isNetworkAvailable(context: Context): Boolean {
     val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
     return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
 }
+
+enum class ServerStatus { UNKNOWN, OK, SLOW, DOWN }
+
+@Composable
+fun ConnectionDot(
+    modifier: Modifier = Modifier,
+    intervalMs: Long = 15_000L
+) {
+    var status by remember { mutableStateOf(ServerStatus.UNKNOWN) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            status = pingServer()
+            delay(intervalMs)
+        }
+    }
+
+    val color = when (status) {
+        ServerStatus.OK -> Color(0xFF2E7D32)
+        ServerStatus.SLOW -> Color(0xFFF9A825)
+        ServerStatus.DOWN -> Color(0xFFC62828)
+        ServerStatus.UNKNOWN -> Color.Gray
+    }
+
+    Box(
+        modifier = modifier
+            .size(12.dp)
+            .clip(CircleShape)
+            .background(color)
+    )
+}
+
+suspend fun pingServer(): ServerStatus = withContext(Dispatchers.IO) {
+    try {
+        val req = Request.Builder()
+            .url(BASE_URL)
+            .get()
+            .build()
+
+        val elapsed = measureTimeMillis {
+            httpClient.newCall(req).execute().use { resp ->
+                if (resp.code !in 200..399) return@withContext ServerStatus.DOWN
+            }
+        }
+
+        if (elapsed > 800) ServerStatus.SLOW else ServerStatus.OK
+    } catch (e: Exception) {
+        ServerStatus.DOWN
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
