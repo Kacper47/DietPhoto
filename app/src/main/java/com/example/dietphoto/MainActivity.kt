@@ -93,7 +93,7 @@ fun AppRoot(cameraExecutor: ExecutorService) {
     }
 
     if (isLoggedIn) {
-        MainScreen(cameraExecutor)
+        MainScreen(cameraExecutor = cameraExecutor, onLogout = { AuthStore.clearToken(context); isLoggedIn = false })
     } else {
         LoginScreen(
             onLoginSuccess = { token ->
@@ -197,7 +197,7 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
 }
 
 @Composable
-fun MainScreen(cameraExecutor: ExecutorService) {
+fun MainScreen(cameraExecutor: ExecutorService, onLogout: () -> Unit) {
     val context = LocalContext.current
     var hasPermission by remember {
         mutableStateOf(
@@ -221,7 +221,7 @@ fun MainScreen(cameraExecutor: ExecutorService) {
     }
 
     if (hasPermission) {
-        CameraContent(cameraExecutor)
+        CameraContent(cameraExecutor, onLogout)
     } else {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("Brak uprawnień do kamery")
@@ -230,7 +230,7 @@ fun MainScreen(cameraExecutor: ExecutorService) {
 }
 
 @Composable
-fun CameraContent(cameraExecutor: ExecutorService) {
+fun CameraContent(cameraExecutor: ExecutorService, onLogout: () -> Unit) {
     val context = LocalContext.current
 
     // Obiekt ImageCapture służy do robienia zdjęć
@@ -247,19 +247,16 @@ fun CameraContent(cameraExecutor: ExecutorService) {
             imageCapture = imageCapture
         )
 
-        // Znajdź to miejsce w okolicach linii 185-191
-//        IconButton(
-//            onClick = {
-//                // Tu na razie pusto
-//            },
-//            modifier = Modifier.align(Alignment.TopEnd).padding(top = 40.dp, end = 16.dp)
-//        ) {
-//            Icon(
-//                contentDescription = "Wyloguj",
-//                tint = Color.White
-//            )
-//        }
-
+                IconButton(
+            onClick = onLogout,
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = 40.dp, end = 16.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.ExitToApp,
+                contentDescription = "Wyloguj",
+                tint = Color.White
+            )
+        }
         // Przycisk robienia zdjęcia
         Column(
             modifier = Modifier
@@ -487,3 +484,4 @@ fun isNetworkAvailable(context: Context): Boolean {
     val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
     return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
 }
+
