@@ -12,11 +12,15 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Push-Location $repoRoot
 try {
-    $variant = if ($Release) { "Release" } else { "Debug" }
-    $task = "assemble$variant"
-    Write-Host "Building variant '$variant' via Gradle task '$task'..."
+$variant = if ($Release) { "Release" } else { "Debug" }
+$task = "assemble$variant"
+Write-Host "Building variant '$variant' via Gradle task '$task'..."
 
-    $gradleCmd = if ($IsWindows) { ".\\gradlew.bat" } else { "./gradlew" }
+# Windows PowerShell 5.x doesn't define $IsWindows; fall back to env check.
+$isWin = $false
+try { $isWin = [bool]$IsWindows } catch { $isWin = ($env:OS -like "*Windows*") }
+
+$gradleCmd = if ($isWin) { ".\\gradlew.bat" } else { "./gradlew" }
     & $gradleCmd $task
 
     $apkName = "app-{0}.apk" -f $variant.ToLower()
