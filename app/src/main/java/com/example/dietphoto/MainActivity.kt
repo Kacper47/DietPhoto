@@ -36,12 +36,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -123,6 +126,11 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(Color(0xFF0F172A), Color(0xFF111827))
+                )
+            )
             .padding(24.dp)
     ) {
         Row(
@@ -134,88 +142,127 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
             ConnectionDot()
         }
 
-        Column(
+        Card(
             modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.Center),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+                .align(Alignment.Center)
+                .fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2937)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
+            shape = RoundedCornerShape(16.dp)
         ) {
-            Text("Zaloguj się", style = MaterialTheme.typography.headlineSmall)
-            Spacer(modifier = Modifier.height(16.dp))
-
-            OutlinedTextField(
-                value = username,
-                onValueChange = { username = it },
-                label = { Text("Nazwa użytkownika") },
-                singleLine = true,
-                enabled = !isLoading,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("Hasło") },
-                singleLine = true,
-                enabled = !isLoading,
-                modifier = Modifier.fillMaxWidth(),
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
-            )
-
-            if (error != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(error.orEmpty(), color = MaterialTheme.colorScheme.error)
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(
-                onClick = {
-                    if (!isNetworkAvailable(context)) {
-                        error = "Brak połączenia z internetem. Włącz Wi-Fi lub dane."
-                        return@Button
-                    }
-
-                    val trimmedUser = username.trim()
-                    if (trimmedUser.isBlank() || password.isBlank()) {
-                        error = "Podaj nazwę użytkownika i hasło"
-                        return@Button
-                    }
-
-                    isLoading = true
-                    error = null
-                    scope.launch {
-                        try {
-                            val token = loginToServer(trimmedUser, password)
-                            AuthStore.persistToken(context, token)
-                            onLoginSuccess(token)
-                        } catch (e: Exception) {
-                            error = when {
-                                e.message?.contains("Incorrect username", ignoreCase = true) == true ->
-                                    "Błędna nazwa użytkownika lub hasło"
-
-                                e.message?.contains("Failed to connect", ignoreCase = true) == true ->
-                                    "Nie można połączyć się z serwerem. Sprawdź adres i internet."
-
-                                else -> "Wystąpił nieoczekiwany błąd: ${e.localizedMessage}"
-                            }
-                        } finally {
-                            isLoading = false
-                        }
-                    }
-                },
-                enabled = !isLoading,
-                modifier = Modifier.fillMaxWidth()
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(if (isLoading) "Logowanie..." else "Zaloguj się")
+                Text(
+                    "Zaloguj się",
+                    style = MaterialTheme.typography.headlineSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    ),
+                    textAlign = TextAlign.Center
+                )
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    label = { Text("Nazwa użytkownika", color = Color(0xFF9CA3AF)) },
+                    singleLine = true,
+                    enabled = !isLoading,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp)),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFF60A5FA),
+                        unfocusedBorderColor = Color(0xFF334155),
+                        cursorColor = Color.White,
+                        focusedLabelColor = Color(0xFFBFDBFE),
+                        unfocusedLabelColor = Color(0xFF9CA3AF)
+                    )
+                )
+
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Hasło", color = Color(0xFF9CA3AF)) },
+                    singleLine = true,
+                    enabled = !isLoading,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp)),
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFF60A5FA),
+                        unfocusedBorderColor = Color(0xFF334155),
+                        cursorColor = Color.White,
+                        focusedLabelColor = Color(0xFFBFDBFE),
+                        unfocusedLabelColor = Color(0xFF9CA3AF)
+                    )
+                )
+
+                if (error != null) {
+                    Text(error.orEmpty(), color = MaterialTheme.colorScheme.error)
+                }
+
+                Button(
+                    onClick = {
+                        if (!isNetworkAvailable(context)) {
+                            error = "Brak internetu! Sprawdz polaczenie sieciowe."
+                            return@Button
+                        }
+
+                        val trimmedUser = username.trim()
+                        if (trimmedUser.isBlank() || password.isBlank()) {
+                            error = "Podaj nazwę użytkownika i hasło."
+                            return@Button
+                        }
+
+                        isLoading = true
+                        error = null
+                        scope.launch {
+                            try {
+                                val token = loginToServer(trimmedUser, password)
+                                AuthStore.persistToken(context, token)
+                                onLoginSuccess(token)
+                            } catch (e: Exception) {
+                                error = when {
+                                    e.message?.contains("Incorrect username", ignoreCase = true) == true ->
+                                        "Bledna nazwa uzytkownika lub haslo"
+
+                                    e.message?.contains("Failed to connect", ignoreCase = true) == true ->
+                                        "Nie mozna polaczyc z serwerem. Sprawdz adres i internet."
+
+                                    else -> "Wystapil niespodziewany blad: ${e.localizedMessage}"
+                                }
+                            } finally {
+                                isLoading = false
+                            }
+                        }
+                    },
+                    enabled = !isLoading,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF2563EB),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(if (isLoading) "Logowanie..." else "Zaloguj się", fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
 }
+
 @Composable
 fun MainScreen(cameraExecutor: ExecutorService, onLogout: () -> Unit) {
     val context = LocalContext.current
