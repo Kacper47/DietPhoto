@@ -96,6 +96,7 @@ fun AppRoot(cameraExecutor: ExecutorService) {
     LaunchedEffect(Unit) {
         if (!isLoggedIn) {
             val token = AuthStore.loadSavedToken(context)
+            AuthStore.loadSavedUserId(context)
             if (!token.isNullOrBlank()) {
                 isLoggedIn = true
             }
@@ -211,11 +212,11 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
                     Text(error.orEmpty(), color = MaterialTheme.colorScheme.error)
                 }
 
-                Button(
-                    onClick = {
-                        if (!isNetworkAvailable(context)) {
-                            error = "Brak internetu! Sprawdz polaczenie sieciowe."
-                            return@Button
+            Button(
+                onClick = {
+                    if (!isNetworkAvailable(context)) {
+                        error = "Brak internetu! Sprawdz polaczenie sieciowe."
+                        return@Button
                         }
 
                         val trimmedUser = username.trim()
@@ -224,17 +225,17 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
                             return@Button
                         }
 
-                        isLoading = true
-                        error = null
-                        scope.launch {
-                            try {
-                                val token = loginToServer(trimmedUser, password)
-                                AuthStore.persistToken(context, token)
-                                onLoginSuccess(token)
-                            } catch (e: Exception) {
-                                error = when {
-                                    e.message?.contains("Incorrect username", ignoreCase = true) == true ->
-                                        "Bledna nazwa uzytkownika lub haslo"
+                    isLoading = true
+                    error = null
+                    scope.launch {
+                        try {
+                            val (token, userId) = loginAndFetchUser(trimmedUser, password)
+                            AuthStore.persistTokenAndUser(context, token, userId)
+                            onLoginSuccess(token)
+                        } catch (e: Exception) {
+                            error = when {
+                                e.message?.contains("Incorrect username", ignoreCase = true) == true ->
+                                    "Bledna nazwa uzytkownika lub haslo"
 
                                     e.message?.contains("Failed to connect", ignoreCase = true) == true ->
                                         "Nie mozna polaczyc z serwerem. Sprawdz adres i internet."
@@ -485,7 +486,7 @@ fun PhotoActionDialog(
                             containerColor = MaterialTheme.colorScheme.primary
                         )
                     ) {
-                        Text("Wyślij na serwer")
+                        Text("Wyślij do analizy")
                     }
                 }
             }

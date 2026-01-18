@@ -27,6 +27,12 @@ fun uploadPhotoToServer(
     onSuccess: () -> Unit = {},
     onError: (String) -> Unit = {}
 ) {
+    val token = AuthStore.accessToken
+    if (token.isNullOrBlank()) {
+        onError("Brak tokenu. Zaloguj si? ponownie.")
+        return
+    }
+
     uploadScope.launch {
         try {
             val file = uriToFileOrThrow(uri)
@@ -38,13 +44,13 @@ fun uploadPhotoToServer(
             // KROK 1: PRESIGN
             val presignBody = JSONObject()
                 .put("extension", extension)
-                .put("user_id", 1)
                 .toString()
                 .toRequestBody(JSON)
 
             val presignReq = Request.Builder()
                 .url("${BASE_URL}photos/presign")
                 .post(presignBody)
+                .header("Authorization", "Bearer $token")
                 .build()
 
             val (photoId, uploadUrl) = httpClient.newCall(presignReq).execute().use { resp ->
@@ -77,13 +83,13 @@ fun uploadPhotoToServer(
                 .put("extension", extension)
                 .put("width", w)
                 .put("height", h)
-                .put("user_id", 1)
                 .toString()
                 .toRequestBody(JSON)
 
             val confirmReq = Request.Builder()
                 .url("${BASE_URL}photos/confirm")
                 .post(confirmBody)
+                .header("Authorization", "Bearer $token")
                 .build()
 
             httpClient.newCall(confirmReq).execute().use { resp ->
