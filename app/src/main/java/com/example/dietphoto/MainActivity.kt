@@ -561,17 +561,3 @@ suspend fun pingServer(): ServerStatus = withContext(Dispatchers.IO) {
         ServerStatus.DOWN
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
