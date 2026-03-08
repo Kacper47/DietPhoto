@@ -6,9 +6,7 @@ plugins {
 
 android {
     namespace = "com.example.dietphoto"
-    compileSdk {
-        version = release(36)
-    }
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.dietphoto"
@@ -53,7 +51,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
-    // Testy
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -61,19 +59,16 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
-
-    // --- POPRAWKA CAMERAX ---
     val cameraVersion = "1.3.4"
-
-    // Usuwamy BOM i definiujemy wersje ręcznie:
     implementation("androidx.camera:camera-core:$cameraVersion")
-    implementation("androidx.camera:camera-camera2:$cameraVersion") // Tu był błąd "camera2"
+    implementation("androidx.camera:camera-camera2:$cameraVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraVersion")
     implementation("androidx.camera:camera-view:$cameraVersion")
-    // Opcjonalnie, jeśli potrzebujesz nagrywania wideo:
+    // Opcjonalnie do nagrywania wideo:
     // implementation("androidx.camera:camera-video:$cameraVersion")
 
     implementation("androidx.compose.material:material-icons-extended")
 
     implementation("io.coil-kt:coil-compose:2.6.0")
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 }
