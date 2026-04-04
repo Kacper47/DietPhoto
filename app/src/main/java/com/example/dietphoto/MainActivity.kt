@@ -1,69 +1,21 @@
-﻿package com.example.dietphoto
+// Punkt wejścia aplikacji. Zarządza stanem nawigacji między ekranami.
+package com.example.dietphoto
 
-import android.Manifest
-import android.content.Context
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
-import android.util.Log
-import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageCaptureException
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Camera
-import androidx.compose.material.icons.filled.ExitToApp
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
-import androidx.core.content.ContextCompat
-import coil.compose.rememberAsyncImagePainter
 import com.example.dietphoto.ui.theme.DietPhotoTheme
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
-import okhttp3.Request
-import kotlin.system.measureTimeMillis
+
+enum class Screen {
+    LOGIN, SELECTION, MEAL_CAMERA, LABEL_CAMERA, RESULT
+}
 
 class MainActivity : ComponentActivity() {
 
@@ -72,9 +24,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
         cameraExecutor = Executors.newSingleThreadExecutor()
-
         setContent {
             DietPhotoTheme {
                 AppRoot(cameraExecutor)
@@ -91,521 +41,65 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppRoot(cameraExecutor: ExecutorService) {
     val context = LocalContext.current
-    var isLoggedIn by rememberSaveable { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        if (!isLoggedIn) {
-            val token = AuthStore.loadSavedToken(context)
-            AuthStore.loadSavedUserId(context)
-            if (!token.isNullOrBlank()) {
-                isLoggedIn = true
-            }
-        }
-    }
-
-    if (isLoggedIn) {
-        MainScreen(cameraExecutor = cameraExecutor, onLogout = { AuthStore.clearToken(context); isLoggedIn = false })
-    } else {
-        LoginScreen(
-            onLoginSuccess = { token ->
-                AuthStore.accessToken = token
-                isLoggedIn = true
-            }
-        )
-    }
-}
-
-@Composable
-fun LoginScreen(onLoginSuccess: (String) -> Unit) {
-    var username by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
-    var isLoading by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
-    val context = LocalContext.current
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(Color(0xFF0F172A), Color(0xFF111827))
-                )
-            )
-            .padding(24.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopEnd),
-            horizontalArrangement = Arrangement.End
-        ) {
-            ConnectionDot()
-        }
-
-        Card(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1F2937)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    "Zaloguj się",
-                    style = MaterialTheme.typography.headlineSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    ),
-                    textAlign = TextAlign.Center
-                )
-                OutlinedTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    label = { Text("Nazwa użytkownika", color = Color(0xFF9CA3AF)) },
-                    singleLine = true,
-                    enabled = !isLoading,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp)),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF60A5FA),
-                        unfocusedBorderColor = Color(0xFF334155),
-                        cursorColor = Color.White,
-                        focusedLabelColor = Color(0xFFBFDBFE),
-                        unfocusedLabelColor = Color(0xFF9CA3AF)
-                    )
-                )
-
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text("Hasło", color = Color(0xFF9CA3AF)) },
-                    singleLine = true,
-                    enabled = !isLoading,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp)),
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF60A5FA),
-                        unfocusedBorderColor = Color(0xFF334155),
-                        cursorColor = Color.White,
-                        focusedLabelColor = Color(0xFFBFDBFE),
-                        unfocusedLabelColor = Color(0xFF9CA3AF)
-                    )
-                )
-
-                if (error != null) {
-                    Text(error.orEmpty(), color = MaterialTheme.colorScheme.error)
-                }
-
-            Button(
-                onClick = {
-                    if (!isNetworkAvailable(context)) {
-                        error = "Brak internetu! Sprawdz polaczenie sieciowe."
-                        return@Button
-                        }
-
-                        val trimmedUser = username.trim()
-                        if (trimmedUser.isBlank() || password.isBlank()) {
-                            error = "Podaj nazwę użytkownika i hasło."
-                            return@Button
-                        }
-
-                    isLoading = true
-                    error = null
-                    scope.launch {
-                        try {
-                            val (token, userId) = loginAndFetchUser(trimmedUser, password)
-                            AuthStore.persistTokenAndUser(context, token, userId)
-                            onLoginSuccess(token)
-                        } catch (e: Exception) {
-                            error = when {
-                                e.message?.contains("Incorrect username", ignoreCase = true) == true ->
-                                    "Bledna nazwa uzytkownika lub haslo"
-
-                                    e.message?.contains("Failed to connect", ignoreCase = true) == true ->
-                                        "Nie mozna polaczyc z serwerem. Sprawdz adres i internet."
-
-                                    else -> "Wystapil niespodziewany blad: ${e.localizedMessage}"
-                                }
-                            } finally {
-                                isLoading = false
-                            }
-                        }
-                    },
-                    enabled = !isLoading,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF2563EB),
-                        contentColor = Color.White
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(if (isLoading) "Logowanie..." else "Zaloguj się", fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun MainScreen(cameraExecutor: ExecutorService, onLogout: () -> Unit) {
-    val context = LocalContext.current
-    var hasPermission by remember {
+// WERSJA ORYGINALNA I DOCELOWA: EKRAN LOGOWANIA NAJPIERW I DALEJ SESJA UŻYTKOWNIKA
+    var screen by rememberSaveable {
         mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.CAMERA
-            ) == PackageManager.PERMISSION_GRANTED
+            if (AuthStore.loadSavedToken(context) != null) Screen.SELECTION else Screen.LOGIN
         )
     }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        hasPermission = granted
+    // WERSJA TYMCZASOWA: TYLKO DO WYSYŁANIA ZDJĘĆ DO TRENINGU BEZ LOGOWANIA
+//    var screen by rememberSaveable {
+//        mutableStateOf(Screen.SELECTION)
+//    }
+
+
+    var resultPhotos by rememberSaveable { mutableStateOf<List<Uri>>(emptyList()) }
+    var isMealMode by rememberSaveable { mutableStateOf(true) }
+
+    val onLogout: () -> Unit = {
+        AuthStore.clearToken(context)
+        screen = Screen.LOGIN
     }
 
-    LaunchedEffect(Unit) {
-        if (!hasPermission) {
-            permissionLauncher.launch(Manifest.permission.CAMERA)
-        }
-    }
-
-    if (hasPermission) {
-        CameraContent(cameraExecutor, onLogout)
-    } else {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Brak uprawnień do kamery")
-        }
-    }
-}
-
-@Composable
-fun CameraContent(cameraExecutor: ExecutorService, onLogout: () -> Unit) {
-    val context = LocalContext.current
-
-    // Obiekt ImageCapture służy do robienia zdjęć
-    val imageCapture = remember { ImageCapture.Builder().build() }
-
-    // Stan tymczasowego zdjęcia (tylko do dialogu)
-    var capturedPhotoUri by remember { mutableStateOf<Uri?>(null) }
-
-    Box(modifier = Modifier.fillMaxSize()) {
-
-        // Podgląd kamery
-        CameraPreviewView(
-            modifier = Modifier.fillMaxSize(),
-            imageCapture = imageCapture
+    when (screen) {
+        Screen.LOGIN -> LoginScreen(
+            onLoginSuccess = { token, userId ->
+                AuthStore.persistTokenAndUser(context, token, userId)
+                screen = Screen.SELECTION
+            }
         )
-
-        Row(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 32.dp, end = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            ConnectionDot()
-
-            IconButton(onClick = onLogout) {
-                Icon(
-                    imageVector = Icons.Filled.ExitToApp,
-                    contentDescription = "Wyloguj",
-                    tint = Color.White
-                )
+        Screen.SELECTION -> SelectionScreen(
+            onMealSelected = {
+                isMealMode = true
+                screen = Screen.MEAL_CAMERA
+            },
+            onLabelSelected = {
+                isMealMode = false
+                screen = Screen.LABEL_CAMERA
+            },
+            onLogout = onLogout
+        )
+        Screen.MEAL_CAMERA -> MealCameraScreen(
+            cameraExecutor = cameraExecutor,
+            onBack = { screen = Screen.SELECTION },
+            onAllPhotosTaken = { photos ->
+                resultPhotos = photos
+                screen = Screen.RESULT
             }
-        }
-        // Przycisk robienia zdjęcia
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 30.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Button(
-                onClick = {
-                    takePhoto(context, imageCapture, cameraExecutor) { uri ->
-                        capturedPhotoUri = uri
-                    }
-                },
-                shape = CircleShape,
-                modifier = Modifier
-                    .size(85.dp)
-                    .border(5.dp, Color.White, CircleShape)
-                    .padding(8.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.White
-                )
-            ) {
-
+        )
+        Screen.LABEL_CAMERA -> LabelCameraScreen(
+            cameraExecutor = cameraExecutor,
+            onBack = { screen = Screen.SELECTION },
+            onPhotoTaken = { photo ->
+                resultPhotos = listOf(photo)
+                screen = Screen.RESULT
             }
-        }
-
-
-        // Okno decyzyjne po zrobieniu zdjęcia (Dialog)
-        capturedPhotoUri?.let { uri ->
-            PhotoActionDialog(
-                photoUri = uri,
-                onDismiss = {
-                    // Usuń plik i zamknij dialog
-                    deletePhoto(context, uri)
-                    capturedPhotoUri = null
-                },
-                onUpload = {
-                    if (!isNetworkAvailable(context)) {
-                        Toast.makeText(context, "Brak internetu! Zdjęcie nie zostało wysłane.", Toast.LENGTH_LONG).show()
-                    } else {
-                        uploadPhotoToServer(
-                            context = context,
-                            uri = uri,
-                            onSuccess = {
-                                deletePhoto(context, uri)
-                                capturedPhotoUri = null
-                            },
-                            onError = {
-                                // tu możesz zdecydować: zostawić plik i/lub zostawić dialog
-                                capturedPhotoUri = null
-                            }
-                        )
-                    }
-                }
-
-            )
-        }
-    }
-}
-
-// Komponent podglądu kamery
-@Composable
-fun CameraPreviewView(
-    modifier: Modifier,
-    imageCapture: ImageCapture
-) {
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val context = LocalContext.current
-    val previewView = remember { PreviewView(context) }
-
-    AndroidView(
-        factory = { previewView },
-        modifier = modifier
-    ) { view ->
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-        cameraProviderFuture.addListener({
-            val cameraProvider = cameraProviderFuture.get()
-            val preview = Preview.Builder().build().also {
-                it.setSurfaceProvider(view.surfaceProvider)
-            }
-            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-
-            try {
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
-                    lifecycleOwner,
-                    cameraSelector,
-                    preview,
-                    imageCapture
-                )
-            } catch (e: Exception) {
-                Log.e("CameraX", "Błąd bindowania kamery", e)
-            }
-        }, ContextCompat.getMainExecutor(context))
-    }
-}
-
-// Okienko z podglądem i dwoma przyciskami
-@Composable
-fun PhotoActionDialog(
-    photoUri: Uri,
-    onDismiss: () -> Unit,
-    onUpload: () -> Unit
-) {
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .wrapContentHeight()
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(16.dp)
-            ) {
-                Text("Co zrobić ze zdjęciem?", style = MaterialTheme.typography.titleMedium)
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Image(
-                    painter = rememberAsyncImagePainter(photoUri),
-                    contentDescription = "Zrobione zdjęcie",
-                    modifier = Modifier
-                        .height(300.dp)
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp)),
-                    contentScale = ContentScale.Crop
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    // guzik "Usuń"
-                    Button(
-                        onClick = onDismiss,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
-                        modifier = Modifier
-                            .widthIn(min = 120.dp)
-                            .padding(bottom = 8.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        Text("Usuń")
-                    }
-
-                    // guzik "Wyślij na serwer"
-                    Button(
-                        onClick = onUpload,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary
-                        )
-                    ) {
-                        Text("Wyślij do analizy")
-                    }
-                }
-            }
-        }
-    }
-}
-
-
-
-// Funkcja robiąca zdjęcie
-fun takePhoto(
-    context: Context,
-    imageCapture: ImageCapture,
-    executor: ExecutorService,
-    onImageCaptured: (Uri) -> Unit
-) {
-    // Tutaj jest plik zdjęcia
-    val photoFile = File(
-        context.getExternalFilesDir(null),
-        SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US)
-            .format(System.currentTimeMillis()) + ".jpg"
-    )
-
-    val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
-
-    imageCapture.takePicture(
-        outputOptions,
-        ContextCompat.getMainExecutor(context),
-        object : ImageCapture.OnImageSavedCallback {
-            override fun onError(exc: ImageCaptureException) {
-                Log.e("CameraX", "Błąd robienia zdjęcia: ${exc.message}", exc)
-            }
-
-            override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                // Uri wskazujące na plik zdjęcia
-                val savedUri = Uri.fromFile(photoFile)
-
-                // I to Uri niesiemy dalej do UI / uploadu:
-                onImageCaptured(savedUri)
-            }
-        }
-    )
-}
-
-// Symulacja wysyłania na serwer
-fun uploadPhotoToServer(context: Context, uri: Uri) {
-    Toast.makeText(context, "Wysyłanie zdjęcia na serwer...", Toast.LENGTH_SHORT).show()
-    Log.d("SERVER_UPLOAD", "Rozpoczynam wysyłanie pliku: $uri")
-    // tutaj można dodać dalsze operacje
-}
-
-// Usuwanie zdjęcia
-fun deletePhoto(context: Context, uri: Uri) {
-    try {
-        // dla Uri.fromFile - usuwamy bezpośrednio plik
-        uri.path?.let { path ->
-            val file = File(path)
-            if (file.exists()) {
-                file.delete()
-            }
-        }
-    } catch (e: Exception) {
-        e.printStackTrace()
-    }
-}
-
-fun isNetworkAvailable(context: Context): Boolean {
-    val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    val network = connectivityManager.activeNetwork ?: return false
-    val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
-    return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-}
-
-enum class ServerStatus { UNKNOWN, OK, SLOW, DOWN }
-
-@Composable
-fun ConnectionDot(
-    modifier: Modifier = Modifier,
-    intervalMs: Long = 15_000L
-) {
-    var status by remember { mutableStateOf(ServerStatus.UNKNOWN) }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            status = pingServer()
-            delay(intervalMs)
-        }
-    }
-
-    val color = when (status) {
-        ServerStatus.OK -> Color(0xFF2E7D32)
-        ServerStatus.SLOW -> Color(0xFFF9A825)
-        ServerStatus.DOWN -> Color(0xFFC62828)
-        ServerStatus.UNKNOWN -> Color.Gray
-    }
-
-    Box(
-        modifier = modifier
-            .size(12.dp)
-            .clip(CircleShape)
-            .background(color)
-    )
-}
-
-suspend fun pingServer(): ServerStatus = withContext(Dispatchers.IO) {
-    try {
-        val req = Request.Builder()
-            .url(BASE_URL)
-            .get()
-            .build()
-
-        val elapsed = measureTimeMillis {
-            httpClient.newCall(req).execute().use { resp ->
-                if (resp.code !in 200..399) return@withContext ServerStatus.DOWN
-            }
-        }
-
-        if (elapsed > 800) ServerStatus.SLOW else ServerStatus.OK
-    } catch (e: Exception) {
-        ServerStatus.DOWN
+        )
+        Screen.RESULT -> ResultScreen(
+            photos = resultPhotos,
+            isMealMode = isMealMode,
+            onBack = { screen = Screen.SELECTION }
+        )
     }
 }
