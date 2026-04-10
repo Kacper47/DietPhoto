@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -39,7 +38,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.roundToInt
-import android.util.Log
+
 
 @Composable
 fun ResultScreen(
@@ -56,6 +55,9 @@ fun ResultScreen(
     var photosVisible by remember { mutableStateOf(false) }
     var isSending by remember { mutableStateOf(false) }
     var wasSent by remember { mutableStateOf(false) }
+    var photoIdsForPolling by remember { mutableStateOf<List<String>>(emptyList()) }
+    var classificationResults by remember { mutableStateOf<List<ClassificationResult>>(emptyList()) }
+    var isPolling by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -84,6 +86,58 @@ fun ResultScreen(
                 stiffness = Spring.StiffnessMediumLow
             )
         )
+    }
+
+    // Auto-upload po wejściu na ekran
+    LaunchedEffect(Unit) {
+        if (photos.isEmpty()) return@LaunchedEffect
+        isSending = true
+        if (isMealMode && photos.size >= 3) {
+            uploadMealToServer(
+                context = context,
+                frontUri = photos[0],
+                leftUri = photos[1],
+                rightUri = photos[2],
+                onSuccess = { photoIds ->
+                    isSending = false
+                    wasSent = true
+                    photoIdsForPolling = photoIds
+                },
+                onError = { isSending = false }
+            )
+        } else if (!isMealMode) {
+            uploadLabelToServer(
+                context = context,
+                photoUri = photos[0],
+                onSuccess = { photoId ->
+                    isSending = false
+                    wasSent = true
+                    photoIdsForPolling = listOf(photoId)
+                },
+                onError = { isSending = false }
+            )
+        }
+    }
+
+    LaunchedEffect(photoIdsForPolling) {
+        if (photoIdsForPolling.isEmpty()) return@LaunchedEffect
+        val token = AuthStore.accessToken ?: return@LaunchedEffect
+        isPolling = true
+        try {
+            repeat(30) {
+                delay(2000)
+                val results = photoIdsForPolling.mapNotNull { id ->
+                    try { fetchClassification(id, token) } catch (e: Exception) { null }
+                }
+                if (results.isNotEmpty()) classificationResults = results
+                if (results.all { it.classificationStatus != "pending" }) {
+                    isPolling = false
+                    return@LaunchedEffect
+                }
+            }
+        } finally {
+            isPolling = false
+        }
     }
 
     BoxWithConstraints(
@@ -302,91 +356,78 @@ fun ResultScreen(
                 ) {
                     val anyChecked = checkedPhotos.values.any { it }
 
-                    // Przycisk wysyłki — na górze
-                    Button(
-                        onClick = {
-                            Log.d("UPLOAD_DEBUG", "Kliknięto przycisk, siec: ${isNetworkAvailable(context)}")
-                            Log.d("UPLOAD_DEBUG", "Zaznaczone: ${checkedPhotos.filter { it.value }.keys}")
-
-                            if (!isNetworkAvailable(context)) {
-                                Toast.makeText(context, "Brak internetu!", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            val selectedIndices = checkedPhotos.filter { it.value }.keys.sorted()
-                            val selectedUris = selectedIndices.map { photos[it] }
-
-                            isSending = true
-                            if (isMealMode) {
-                                Log.d("UPLOAD_DEBUG", "Wywoluje uploadMealToServer")
-                                val front = selectedUris.getOrNull(0) ?: photos[0]
-                                val left = selectedUris.getOrNull(1) ?: photos[1]
-                                val right = selectedUris.getOrNull(2) ?: photos[2]
-                                uploadMealToServer(
-                                    context = context,
-                                    frontUri = front,
-                                    leftUri = left,
-                                    rightUri = right,
-                                    onSuccess = {
-                                        isSending = false
-                                        wasSent = true
-                                                },
-                                    onError = { isSending = false }
-                                )
-                            } else {
-                                Log.d("UPLOAD_DEBUG", "isMealMode: $isMealMode, wywoluje uploadLabelToServer")
-                                val photo = selectedUris.firstOrNull() ?: photos[0]
-                                Log.d("UPLOAD_DEBUG", "photo uri: $photo")
-                                uploadLabelToServer(
-                                    context = context,
-                                    photoUri  = photo,
-                                    onSuccess = {
-                                        isSending = false
-                                        wasSent = true
-                                                },
-                                    onError = { isSending = false }
-                                )
-                            }
-                        },
-                        enabled = anyChecked && !isSending,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        if (isSending) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                                color = Color.White
-                            )
-                        } else {
-                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
+                    if (isSending) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Wysyłanie zdjęć...", fontSize = 14.sp, color = Color.Gray)
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(if (isSending) "Wysyłanie..." else "Wyślij zdjęcia do treningu")
+                    } else if (isPolling) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Analizowanie zdjęcia...", fontSize = 14.sp, color = Color.Gray)
+                        }
+                    } else if (classificationResults.isNotEmpty()) {
+                        if (isMealMode) {
+                            val best = classificationResults
+                                .filter { it.classificationStatus == "completed" && it.predictedClass != null }
+                                .maxByOrNull { it.confidence ?: 0.0 }
+                            if (best != null) {
+                                Text("Rozpoznany posiłek", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                Spacer(modifier = Modifier.height(12.dp))
+                                NutritionRow("Klasa", best.predictedClass ?: "")
+                                NutritionRow("Pewność", "${((best.confidence ?: 0.0) * 100).toInt()}%")
+                                if (best.topPredictions.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Text("Top predykcje", fontSize = 14.sp, color = Color.Gray)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    best.topPredictions.forEach { (label, conf) ->
+                                        NutritionRow(label, "${(conf * 100).toInt()}%")
+                                    }
+                                }
+                            } else if (classificationResults.all { it.classificationStatus == "classification_failed" }) {
+                                Text("Klasyfikacja nie powiodła się", fontSize = 14.sp, color = Color(0xFFD32F2F))
+                            } else if (classificationResults.all { it.classificationStatus == "disabled" }) {
+                                Text("Klasyfikacja wyłączona na serwerze", fontSize = 14.sp, color = Color.Gray)
+                            }
+                        } else {
+                            val result = classificationResults.firstOrNull()
+                            if (result?.extractedText?.isNotEmpty() == true) {
+                                val nutrition = parseNutritionFromOcr(result.extractedText)
+                                val hasNutrition = listOf(
+                                    nutrition.calories, nutrition.protein,
+                                    nutrition.fat, nutrition.carbs
+                                ).any { it != null }
+
+                                if (hasNutrition) {
+                                    Text("Wartości odżywcze", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    nutrition.calories?.let { NutritionRow("Kalorie", it) }
+                                    nutrition.protein?.let { NutritionRow("Białko", it) }
+                                    nutrition.fat?.let { NutritionRow("Tłuszcz", it) }
+                                    nutrition.carbs?.let { NutritionRow("Węglowodany", it) }
+                                    nutrition.fiber?.let { NutritionRow("Błonnik", it) }
+                                    nutrition.salt?.let { NutritionRow("Sól", it) }
+                                    Spacer(modifier = Modifier.height(20.dp))
+                                }
+
+                                Text(
+                                    text = "Pełny tekst z etykiety",
+                                    fontWeight = if (hasNutrition) FontWeight.Normal else FontWeight.Bold,
+                                    fontSize = if (hasNutrition) 14.sp else 18.sp,
+                                    color = if (hasNutrition) Color.Gray else Color.Unspecified
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                result.extractedText.forEach { line ->
+                                    Text(line, fontSize = 13.sp, modifier = Modifier.padding(vertical = 3.dp))
+                                    HorizontalDivider(color = Color(0xFFF0F0F0))
+                                }
+                            } else if (result?.classificationStatus == "completed") {
+                                Text("Nie udało się odczytać tekstu z etykiety", fontSize = 14.sp, color = Color.Gray)
+                            }
+                        }
                     }
-
-                    // Komunikat po wysłaniu
-                    if (wasSent) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Dziękujemy za dane uczące dla naszego systemu!",
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.primary,
-                            lineHeight = 20.sp
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    Text(
-                        text = "Wartości odżywcze (wkrótce)",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    NutritionRow("Kalorie", "— kcal")
-                    NutritionRow("Białko", "— g")
-                    NutritionRow("...", "...")
 
                     Spacer(modifier = Modifier.height(24.dp))
 
@@ -413,6 +454,57 @@ fun ResultScreen(
             }
         }
     }
+}
+
+data class NutritionFacts(
+    val calories: String? = null,
+    val protein: String? = null,
+    val fat: String? = null,
+    val carbs: String? = null,
+    val fiber: String? = null,
+    val salt: String? = null
+)
+
+fun parseNutritionFromOcr(lines: List<String>): NutritionFacts {
+    var calories: String? = null
+    var protein: String? = null
+    var fat: String? = null
+    var carbs: String? = null
+    var fiber: String? = null
+    var salt: String? = null
+
+    val kcalRegex = Regex("""(\d+[,.]?\d*)\s*kcal""", RegexOption.IGNORE_CASE)
+    val gramRegex = Regex("""(\d+[,.]?\d*)\s*g\b""", RegexOption.IGNORE_CASE)
+
+    lines.forEach { line ->
+        val lower = line.lowercase()
+        when {
+            calories == null && (lower.contains("kcal") || lower.contains("energet")) -> {
+                calories = kcalRegex.find(line)?.groupValues?.get(1)?.let { "$it kcal" }
+                    ?: gramRegex.find(line)?.groupValues?.get(1)
+            }
+            protein == null && lower.contains("białko") -> {
+                protein = gramRegex.find(line)?.groupValues?.get(1)?.let { "$it g" }
+            }
+            fat == null && lower.contains("tłuszcz")
+                && !lower.contains("nasycone")
+                && !lower.contains("jednonienasycone")
+                && !lower.contains("wielonienasycone") -> {
+                fat = gramRegex.find(line)?.groupValues?.get(1)?.let { "$it g" }
+            }
+            carbs == null && lower.contains("węglowodan") && !lower.contains("cukr") -> {
+                carbs = gramRegex.find(line)?.groupValues?.get(1)?.let { "$it g" }
+            }
+            fiber == null && lower.contains("błonnik") -> {
+                fiber = gramRegex.find(line)?.groupValues?.get(1)?.let { "$it g" }
+            }
+            salt == null && lower.contains("sól") -> {
+                salt = gramRegex.find(line)?.groupValues?.get(1)?.let { "$it g" }
+            }
+        }
+    }
+
+    return NutritionFacts(calories, protein, fat, carbs, fiber, salt)
 }
 
 @Composable

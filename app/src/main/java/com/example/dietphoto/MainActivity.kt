@@ -41,17 +41,24 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppRoot(cameraExecutor: ExecutorService) {
     val context = LocalContext.current
-// WERSJA ORYGINALNA I DOCELOWA: EKRAN LOGOWANIA NAJPIERW I DALEJ SESJA UŻYTKOWNIKA
     var screen by rememberSaveable {
         mutableStateOf(
             if (AuthStore.loadSavedToken(context) != null) Screen.SELECTION else Screen.LOGIN
         )
     }
 
-    // WERSJA TYMCZASOWA: TYLKO DO WYSYŁANIA ZDJĘĆ DO TRENINGU BEZ LOGOWANIA
-//    var screen by rememberSaveable {
-//        mutableStateOf(Screen.SELECTION)
-//    }
+    // Przy starcie waliduj zapisany token — jeśli nieważny, wróć do loginu
+    LaunchedEffect(Unit) {
+        val token = AuthStore.accessToken
+        if (token != null && screen == Screen.SELECTION) {
+            try {
+                fetchUserId(token)
+            } catch (e: Exception) {
+                AuthStore.clearToken(context)
+                screen = Screen.LOGIN
+            }
+        }
+    }
 
 
     var resultPhotos by rememberSaveable { mutableStateOf<List<Uri>>(emptyList()) }

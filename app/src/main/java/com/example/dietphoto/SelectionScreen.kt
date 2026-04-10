@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExitToApp
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.LocalDining
 import androidx.compose.material3.*
@@ -37,20 +36,6 @@ fun SelectionScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        //Guzik wylogowania
-        IconButton(
-            onClick = onLogout,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(top = 40.dp, start = 8.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.ExitToApp,
-                contentDescription = "Wyloguj",
-                tint = MaterialTheme.colorScheme.onBackground
-            )
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -60,36 +45,6 @@ fun SelectionScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(34.dp))
-
-            // Bloczek informacyjny
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier
-                            .size(20.dp)
-                            .padding(top = 2.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "Nasz system jest aktualnie szkolony do liczenia kalorii ze zdjęć — każde zdjęcie, które zostawisz, pomaga nam go ulepszać.",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        lineHeight = 17.sp
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
 
             SelectionCard(
                 title = "Zdjecie posilku",
@@ -114,6 +69,20 @@ fun SelectionScreen(
             )
 
             Spacer(modifier = Modifier.height(24.dp))
+        }
+
+        // Guzik wylogowania — po Column, żeby był na wierzchu
+        IconButton(
+            onClick = onLogout,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(top = 40.dp, start = 8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.ExitToApp,
+                contentDescription = "Wyloguj",
+                tint = MaterialTheme.colorScheme.onBackground
+            )
         }
     }
 }

@@ -30,6 +30,52 @@ data class UploadedPhoto(
     val extension: String = "jpg"
 )
 
+// Wynik klasyfikacji / OCR dla jednego zdjęcia (GET /photos/{id}/classification)
+data class ClassificationResult(
+    val photoId: String,
+    val imageType: String,
+    val classificationStatus: String, // pending, completed, classification_failed, not_applicable, disabled
+    val predictedClass: String?,
+    val confidence: Double?,
+    val topPredictions: List<Pair<String, Double>>,
+    val extractedText: List<String>,
+    val errorMessage: String?
+)
+
+suspend fun fetchClassification(photoId: String, token: String): ClassificationResult =
+    withContext(Dispatchers.IO) {
+        val req = Request.Builder()
+            .url("${BASE_URL}photos/$photoId/classification")
+            .get()
+            .header("Authorization", "Bearer $token")
+            .build()
+        httpClient.newCall(req).execute().use { resp ->
+            val raw = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) error("Classification fetch failed: HTTP ${resp.code} $raw")
+            val json = JSONObject(raw)
+            val topPreds = json.optJSONArray("top_predictions")?.let { arr ->
+                (0 until arr.length()).map { i ->
+                    val obj = arr.getJSONObject(i)
+                    obj.getString("label") to obj.getDouble("confidence")
+                }
+            } ?: emptyList()
+            val textArr = json.optJSONArray("extracted_text")
+            val extractedText = if (textArr != null)
+                (0 until textArr.length()).map { textArr.getString(it) }
+            else emptyList()
+            ClassificationResult(
+                photoId = json.getString("photo_id"),
+                imageType = json.optString("image_type", ""),
+                classificationStatus = json.getString("classification_status"),
+                predictedClass = if (json.isNull("predicted_class")) null else json.optString("predicted_class"),
+                confidence = if (json.isNull("confidence")) null else json.optDouble("confidence"),
+                topPredictions = topPreds,
+                extractedText = extractedText,
+                errorMessage = if (json.isNull("error_message")) null else json.optString("error_message")
+            )
+        }
+    }
+
 // Presign + PUT dla jednego zdjęcia, zwraca UploadedPhoto
 private suspend fun presignAndUpload(
     context: Context,
@@ -84,7 +130,7 @@ fun uploadMealToServer(
     frontUri: Uri,
     leftUri: Uri,
     rightUri: Uri,
-    onSuccess: () -> Unit = {},
+    onSuccess: (List<String>) -> Unit = { _ -> },
     onError: (String) -> Unit = {}
 ) {
     val token = AuthStore.accessToken
@@ -127,7 +173,7 @@ fun uploadMealToServer(
 
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "Posiłek wysłany na serwer", Toast.LENGTH_SHORT).show()
-                onSuccess()
+                onSuccess(listOf(front.photoId, left.photoId, right.photoId))
             }
         } catch (e: Exception) {
             Log.e("UPLOAD_MEAL", "Error", e)
@@ -144,7 +190,7 @@ fun uploadMealToServer(
 fun uploadLabelToServer(
     context: Context,
     photoUri: Uri,
-    onSuccess: () -> Unit = {},
+    onSuccess: (String) -> Unit = { _ -> },
     onError: (String) -> Unit = {}
 ) {
     val token = AuthStore.accessToken
@@ -181,7 +227,7 @@ fun uploadLabelToServer(
 
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "Etykieta wysłana na serwer", Toast.LENGTH_SHORT).show()
-                onSuccess()
+                onSuccess(photo.photoId)
             }
         } catch (e: Exception) {
             Log.e("UPLOAD_LABEL", "Error", e)
