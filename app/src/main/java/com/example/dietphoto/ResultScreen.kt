@@ -55,6 +55,8 @@ fun ResultScreen(
     var photosVisible by remember { mutableStateOf(false) }
     var isSending by remember { mutableStateOf(false) }
     var wasSent by remember { mutableStateOf(false) }
+    var sendError by remember { mutableStateOf<String?>(null) }
+    var pollingTimedOut by remember { mutableStateOf(false) }
     var photoIdsForPolling by remember { mutableStateOf<List<String>>(emptyList()) }
     var classificationResults by remember { mutableStateOf<List<ClassificationResult>>(emptyList()) }
     var isPolling by remember { mutableStateOf(false) }
@@ -103,7 +105,10 @@ fun ResultScreen(
                     wasSent = true
                     photoIdsForPolling = photoIds
                 },
-                onError = { isSending = false }
+                onError = { msg ->
+                    isSending = false
+                    sendError = msg
+                }
             )
         } else if (!isMealMode) {
             uploadLabelToServer(
@@ -114,7 +119,10 @@ fun ResultScreen(
                     wasSent = true
                     photoIdsForPolling = listOf(photoId)
                 },
-                onError = { isSending = false }
+                onError = { msg ->
+                    isSending = false
+                    sendError = msg
+                }
             )
         }
     }
@@ -123,6 +131,7 @@ fun ResultScreen(
         if (photoIdsForPolling.isEmpty()) return@LaunchedEffect
         val token = AuthStore.accessToken ?: return@LaunchedEffect
         isPolling = true
+        pollingTimedOut = false
         try {
             repeat(30) {
                 delay(2000)
@@ -135,6 +144,7 @@ fun ResultScreen(
                     return@LaunchedEffect
                 }
             }
+            pollingTimedOut = true
         } finally {
             isPolling = false
         }
@@ -362,12 +372,24 @@ fun ResultScreen(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Wysyłanie zdjęć...", fontSize = 14.sp, color = Color.Gray)
                         }
+                    } else if (sendError != null) {
+                        Text(
+                            "Błąd wysyłania: $sendError",
+                            fontSize = 14.sp,
+                            color = Color(0xFFD32F2F)
+                        )
                     } else if (isPolling) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Analizowanie zdjęcia...", fontSize = 14.sp, color = Color.Gray)
                         }
+                    } else if (pollingTimedOut) {
+                        Text(
+                            "Serwer nie odpowiedział na czas. Spróbuj ponownie.",
+                            fontSize = 14.sp,
+                            color = Color(0xFFD32F2F)
+                        )
                     } else if (classificationResults.isNotEmpty()) {
                         if (isMealMode) {
                             val best = classificationResults
@@ -386,8 +408,13 @@ fun ResultScreen(
                                         NutritionRow(label, "${(conf * 100).toInt()}%")
                                     }
                                 }
-                            } else if (classificationResults.all { it.classificationStatus == "classification_failed" }) {
+                            } else if (classificationResults.any { it.classificationStatus == "classification_failed" }) {
+                                val errorDetail = classificationResults.firstOrNull { it.errorMessage != null }?.errorMessage
                                 Text("Klasyfikacja nie powiodła się", fontSize = 14.sp, color = Color(0xFFD32F2F))
+                                if (errorDetail != null) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(errorDetail, fontSize = 12.sp, color = Color.Gray)
+                                }
                             } else if (classificationResults.all { it.classificationStatus == "disabled" }) {
                                 Text("Klasyfikacja wyłączona na serwerze", fontSize = 14.sp, color = Color.Gray)
                             }
@@ -422,6 +449,12 @@ fun ResultScreen(
                                 result.extractedText.forEach { line ->
                                     Text(line, fontSize = 13.sp, modifier = Modifier.padding(vertical = 3.dp))
                                     HorizontalDivider(color = Color(0xFFF0F0F0))
+                                }
+                            } else if (result?.classificationStatus == "classification_failed") {
+                                Text("Błąd odczytu etykiety po stronie serwera", fontSize = 14.sp, color = Color(0xFFD32F2F))
+                                result.errorMessage?.let {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(it, fontSize = 12.sp, color = Color.Gray)
                                 }
                             } else if (result?.classificationStatus == "completed") {
                                 Text("Nie udało się odczytać tekstu z etykiety", fontSize = 14.sp, color = Color.Gray)
