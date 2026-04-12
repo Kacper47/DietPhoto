@@ -25,6 +25,17 @@ fun LabelCameraScreen(
     onBack: () -> Unit,
     onPhotoTaken: (Uri) -> Unit
 ) {
+    CameraPermissionWrapper {
+        LabelCameraContent(cameraExecutor, onBack, onPhotoTaken)
+    }
+}
+
+@Composable
+private fun LabelCameraContent(
+    cameraExecutor: ExecutorService,
+    onBack: () -> Unit,
+    onPhotoTaken: (Uri) -> Unit
+) {
     val context = LocalContext.current
     val imageCapture = remember { ImageCapture.Builder().build() }
 

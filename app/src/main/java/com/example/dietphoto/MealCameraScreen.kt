@@ -49,6 +49,17 @@ fun MealCameraScreen(
     onBack: () -> Unit,
     onAllPhotosTaken: (List<Uri>) -> Unit
 ) {
+    CameraPermissionWrapper {
+        MealCameraContent(cameraExecutor, onBack, onAllPhotosTaken)
+    }
+}
+
+@Composable
+private fun MealCameraContent(
+    cameraExecutor: ExecutorService,
+    onBack: () -> Unit,
+    onAllPhotosTaken: (List<Uri>) -> Unit
+) {
     val context = LocalContext.current
     val imageCapture = remember { ImageCapture.Builder().build() }
 
@@ -59,8 +70,6 @@ fun MealCameraScreen(
             activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
-
-
 
     // Lista zrobionych zdjęć (maks. 3)
     val takenPhotos = remember { mutableStateListOf<Uri>() }

@@ -38,7 +38,6 @@ fun LoginScreen(onLoginSuccess: (String, Int) -> Unit) {
             onValueChange = { username = it },
             label = { Text("Nazwa użytkownika") },
             singleLine = true,
-            enabled = !isLoading,
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -49,7 +48,6 @@ fun LoginScreen(onLoginSuccess: (String, Int) -> Unit) {
             onValueChange = { password = it },
             label = { Text("Hasło") },
             singleLine = true,
-            enabled = !isLoading,
             modifier = Modifier.fillMaxWidth(),
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)

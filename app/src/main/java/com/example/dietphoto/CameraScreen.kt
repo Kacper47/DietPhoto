@@ -3,8 +3,10 @@ package com.example.dietphoto
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -27,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -36,9 +39,13 @@ import java.util.Locale
 import java.util.concurrent.ExecutorService
 import androidx.compose.material.icons.filled.ArrowBack
 
-
+/**
+ * Wrapper sprawdzający uprawnienia do kamery przed wyświetleniem treści.
+ * Jeśli uprawnienie nie jest nadane — prosi o nie.
+ * Jeśli zostało trwale odrzucone — pokazuje link do ustawień.
+ */
 @Composable
-fun MainScreen(cameraExecutor: ExecutorService, onLogout: () -> Unit, onBack: () -> Unit) {
+fun CameraPermissionWrapper(content: @Composable () -> Unit) {
     val context = LocalContext.current
     var hasPermission by remember {
         mutableStateOf(
@@ -46,21 +53,52 @@ fun MainScreen(cameraExecutor: ExecutorService, onLogout: () -> Unit, onBack: ()
                     == PackageManager.PERMISSION_GRANTED
         )
     }
+    var permissionDeniedPermanently by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
-    ) { granted -> hasPermission = granted }
+    ) { granted ->
+        hasPermission = granted
+        if (!granted) permissionDeniedPermanently = true
+    }
 
     LaunchedEffect(Unit) {
         if (!hasPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
     }
 
-    if (hasPermission) {
-        CameraContent(cameraExecutor, onLogout, onBack)
-    } else {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Brak uprawnień do kamery")
+    when {
+        hasPermission -> content()
+        permissionDeniedPermanently -> {
+            Box(modifier = Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "Aplikacja potrzebuje dostępu do kamery, aby robić zdjęcia.",
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(onClick = {
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", context.packageName, null)
+                        }
+                        context.startActivity(intent)
+                    }) {
+                        Text("Otwórz ustawienia")
+                    }
+                }
+            }
         }
+        else -> {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        }
+    }
+}
+
+@Composable
+fun MainScreen(cameraExecutor: ExecutorService, onLogout: () -> Unit, onBack: () -> Unit) {
+    CameraPermissionWrapper {
+        CameraContent(cameraExecutor, onLogout, onBack)
     }
 }
 
