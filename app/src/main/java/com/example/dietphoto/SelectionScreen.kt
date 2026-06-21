@@ -46,9 +46,18 @@ fun SelectionScreen(
         ) {
             Spacer(modifier = Modifier.height(34.dp))
 
+            AuthStore.username?.let { name ->
+                Text(
+                    text = "Witaj, $name!",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+
             SelectionCard(
-                title = "Zdjecie posilku",
-                subtitle = "3 zdjecia z roznych stron",
+                title = "Zdjęcie posiłku",
+                subtitle = "3 zdjęcia z różnych stron",
                 icon = Icons.Default.LocalDining,
                 gradient = Brush.linearGradient(
                     colors = listOf(Color(0xFF81C784), Color(0xFF388E3C))
@@ -59,8 +68,8 @@ fun SelectionScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             SelectionCard(
-                title = "Zdjecie etykiety",
-                subtitle = "1 zdjecie etykiety produktu",
+                title = "Zdjęcie etykiety",
+                subtitle = "1 zdjęcie etykiety produktu",
                 icon = Icons.AutoMirrored.Filled.Label,
                 gradient = Brush.linearGradient(
                     colors = listOf(Color(0xB364B5F6), Color(0xB31565C0))

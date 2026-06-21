@@ -76,6 +76,7 @@ fun LoginScreen(onLoginSuccess: (String, Int) -> Unit) {
                 scope.launch {
                     try {
                         val (token, userId) = loginAndFetchUser(trimmedUser, password)
+                        AuthStore.persistUsername(context, trimmedUser)
                         onLoginSuccess(token, userId)
                     } catch (e: Exception) {
                         error = when {

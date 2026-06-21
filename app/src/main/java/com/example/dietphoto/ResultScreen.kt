@@ -14,8 +14,11 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -29,6 +32,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -60,6 +65,8 @@ fun ResultScreen(
     var photoIdsForPolling by remember { mutableStateOf<List<String>>(emptyList()) }
     var classificationResults by remember { mutableStateOf<List<ClassificationResult>>(emptyList()) }
     var isPolling by remember { mutableStateOf(false) }
+    var selectedLabel by remember { mutableStateOf<String?>(null) }
+    var weightText by remember { mutableStateOf("100") }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -124,6 +131,12 @@ fun ResultScreen(
                     sendError = msg
                 }
             )
+        }
+    }
+
+    LaunchedEffect(classificationResults) {
+        if (selectedLabel == null && classificationResults.isNotEmpty()) {
+            selectedLabel = combineClassificationResults(classificationResults).firstOrNull()?.first
         }
     }
 
@@ -366,11 +379,11 @@ fun ResultScreen(
                 ) {
                     val anyChecked = checkedPhotos.values.any { it }
 
-                    if (isSending) {
+                    if (isSending || isPolling) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Wysyłanie zdjęć...", fontSize = 14.sp, color = Color.Gray)
+                            Text("Analizowanie zdjęcia...", fontSize = 14.sp, color = Color.Gray)
                         }
                     } else if (sendError != null) {
                         Text(
@@ -378,12 +391,6 @@ fun ResultScreen(
                             fontSize = 14.sp,
                             color = Color(0xFFD32F2F)
                         )
-                    } else if (isPolling) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Analizowanie zdjęcia...", fontSize = 14.sp, color = Color.Gray)
-                        }
                     } else if (pollingTimedOut) {
                         Text(
                             "Serwer nie odpowiedział na czas. Spróbuj ponownie.",
@@ -392,20 +399,136 @@ fun ResultScreen(
                         )
                     } else if (classificationResults.isNotEmpty()) {
                         if (isMealMode) {
-                            val best = classificationResults
-                                .filter { it.classificationStatus == "completed" && it.predictedClass != null }
-                                .maxByOrNull { it.confidence ?: 0.0 }
-                            if (best != null) {
-                                Text("Rozpoznany posiłek", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                                Spacer(modifier = Modifier.height(12.dp))
-                                NutritionRow("Klasa", best.predictedClass ?: "")
-                                NutritionRow("Pewność", "${((best.confidence ?: 0.0) * 100).toInt()}%")
-                                if (best.topPredictions.isNotEmpty()) {
+                            val combinedPredictions = combineClassificationResults(classificationResults)
+                            if (combinedPredictions.isNotEmpty()) {
+                                val currentLabel = selectedLabel ?: combinedPredictions.first().first
+                                val displayName = currentLabel.toFoodDisplayName()
+                                val nutrition = nutritionFor(currentLabel)
+                                val grams = weightText.toIntOrNull() ?: 0
+                                val totalKcal = if (grams > 0) (nutrition.kcal * grams) / 100 else 0
+                                val currentConfidence = combinedPredictions
+                                    .firstOrNull { it.first == currentLabel }?.second ?: 0.0
+
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                                    ),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                displayName,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 20.sp,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                            Text(
+                                                "Pewność: ${(currentConfidence * 100).toInt()}%",
+                                                fontSize = 13.sp,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                            )
+                                        }
+                                        Text(
+                                            text = "${nutrition.kcal}\nkcal/100g",
+                                            fontSize = 12.sp,
+                                            textAlign = TextAlign.Center,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                Text(
+                                    "Wprowadź gramaturę:",
+                                    fontSize = 13.sp,
+                                    color = Color.Gray
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = weightText,
+                                        onValueChange = { new ->
+                                            weightText = new.filter { it.isDigit() }.take(5)
+                                        },
+                                        label = { Text("Gramatura") },
+                                        suffix = { Text("g") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.width(140.dp),
+                                        singleLine = true
+                                    )
+                                    Column {
+                                        Text(
+                                            "$totalKcal",
+                                            fontSize = 36.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text("kcal", fontSize = 14.sp, color = Color.Gray)
+                                    }
+                                }
+
+                                if (grams > 0) {
                                     Spacer(modifier = Modifier.height(12.dp))
-                                    Text("Top predykcje", fontSize = 14.sp, color = Color.Gray)
+                                    NutritionRow("Białko", "%.1f g".format(nutrition.proteinG * grams / 100f))
+                                    NutritionRow("Tłuszcz", "%.1f g".format(nutrition.fatG * grams / 100f))
+                                    NutritionRow("Węglowodany", "%.1f g".format(nutrition.carbsG * grams / 100f))
+                                    NutritionRow("Błonnik", "%.1f g".format(nutrition.fiberG * grams / 100f))
+                                    NutritionRow("Sól", "%.2f g".format(nutrition.saltG * grams / 100f))
+                                }
+
+                                if (combinedPredictions.size > 1) {
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    HorizontalDivider()
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        "Inne możliwości",
+                                        fontSize = 13.sp,
+                                        color = Color.Gray,
+                                        fontWeight = FontWeight.Medium
+                                    )
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    best.topPredictions.forEach { (label, conf) ->
-                                        NutritionRow(label, "${(conf * 100).toInt()}%")
+                                    combinedPredictions.forEach { (label, conf) ->
+                                        val isSelected = currentLabel == label
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(
+                                                    if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                                                    else Color.Transparent
+                                                )
+                                                .clickable { selectedLabel = label }
+                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isSelected) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
+                                                contentDescription = null,
+                                                tint = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                label.toFoodDisplayName(),
+                                                modifier = Modifier.weight(1f),
+                                                fontSize = 14.sp
+                                            )
+                                            Text(
+                                                "${(conf * 100).toInt()}%",
+                                                fontSize = 14.sp,
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
+                                                fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal
+                                            )
+                                        }
                                     }
                                 }
                             } else if (classificationResults.any { it.classificationStatus == "classification_failed" }) {
@@ -497,6 +620,36 @@ data class NutritionFacts(
     val fiber: String? = null,
     val salt: String? = null
 )
+
+fun combineClassificationResults(results: List<ClassificationResult>): List<Pair<String, Double>> {
+    val completed = results.filter { it.classificationStatus == "completed" && it.predictedClass != null }
+    if (completed.isEmpty()) return emptyList()
+
+    // Voting: sprawdź czy 2+ zdjęcia zgadzają się na ten sam #1
+    val topVotes = completed.groupingBy { it.predictedClass!! }.eachCount()
+    val majorityWinner = topVotes.entries.firstOrNull { it.value >= 2 }?.key
+
+    // Średnia confidence dla każdej etykiety ze wszystkich zdjęć
+    val confidenceMap = mutableMapOf<String, MutableList<Double>>()
+    completed.forEach { result ->
+        result.topPredictions.forEach { (label, conf) ->
+            confidenceMap.getOrPut(label) { mutableListOf() }.add(conf)
+        }
+    }
+    val averaged = confidenceMap.map { (label, confs) ->
+        label to confs.average()
+    }.sortedByDescending { it.second }
+
+    // Jeśli jest wyraźny winner z votingu — idzie na pierwsze miejsce
+    return if (majorityWinner != null) {
+        val winnerConf = averaged.firstOrNull { it.first == majorityWinner }?.second
+            ?: completed.filter { it.predictedClass == majorityWinner }
+                .mapNotNull { it.confidence }.average()
+        listOf(majorityWinner to winnerConf) + averaged.filter { it.first != majorityWinner }
+    } else {
+        averaged
+    }
+}
 
 fun parseNutritionFromOcr(lines: List<String>): NutritionFacts {
     var calories: String? = null

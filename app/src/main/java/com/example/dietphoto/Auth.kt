@@ -16,15 +16,19 @@ object AuthStore {
     var accessToken: String? = null
     @Volatile
     var userId: Int? = null
+    @Volatile
+    var username: String? = null
 
     private const val PREFS_NAME = "auth_prefs"
     private const val KEY_TOKEN = "access_token"
     private const val KEY_USER_ID = "user_id"
+    private const val KEY_USERNAME = "username"
 
     fun loadSavedToken(context: Context): String? {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val token = prefs.getString(KEY_TOKEN, null)
         accessToken = token
+        username = prefs.getString(KEY_USERNAME, null)
         return token
     }
 
@@ -51,11 +55,18 @@ object AuthStore {
             .apply()
     }
 
+    fun persistUsername(context: Context, name: String) {
+        username = name
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putString(KEY_USERNAME, name).apply()
+    }
+
     fun clearToken(context: Context) {
         accessToken = null
         userId = null
+        username = null
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().remove(KEY_TOKEN).remove(KEY_USER_ID).apply()
+        prefs.edit().remove(KEY_TOKEN).remove(KEY_USER_ID).remove(KEY_USERNAME).apply()
     }
 }
 
